@@ -2,98 +2,64 @@ const transactionService = require('./TransactionService');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const os = require('os');
-const fetch = require('node-fetch');
 
 const app = express();
-const port = 4000;
+const port = process.env.PORT || 8080;
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(cors());
 
-// ROUTES FOR OUR API
-// =======================================================
-
-//Health Checking
-app.get('/health',(req,res)=>{
-    res.json("This is the health check");
+// Health check - used by ALB target group / CodeDeploy validation
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok' });
 });
 
 // ADD TRANSACTION
-app.post('/transaction', (req,res)=>{
-    var response = "";
-    try{
-        console.log(req.body);
-        console.log(req.body.amount);
-        console.log(req.body.desc);
-        var success = transactionService.addTransaction(req.body.amount,req.body.desc);
-        if (success = 200) res.json({ message: 'added transaction successfully'});
-    }catch (err){
-        res.json({ message: 'something went wrong', error : err.message});
-    }
+app.post('/transaction', (req, res) => {
+    transactionService.addTransaction(req.body.amount, req.body.desc, (err) => {
+        if (err) return res.status(500).json({ message: 'something went wrong', error: err.message });
+        res.status(200).json({ message: 'added transaction successfully' });
+    });
 });
 
 // GET ALL TRANSACTIONS
-app.get('/transaction',(req,res)=>{
-    try{
-        var transactionList = [];
-       transactionService.getAllTransactions(function (results) {
-            console.log("we are in the call back:");
-            for (const row of results) {
-                transactionList.push({ "id": row.id, "amount": row.amount, "description": row.description });
-            }
-            console.log(transactionList);
-            res.statusCode = 200;
-            res.json({"result":transactionList});
-        });
-    }catch (err){
-        res.json({message:"could not get all transactions",error: err.message});
-    }
+app.get('/transaction', (req, res) => {
+    transactionService.getAllTransactions((err, results) => {
+        if (err) return res.status(500).json({ message: 'could not get all transactions', error: err.message });
+        const transactionList = results.map(row => ({
+            id: row.id, amount: row.amount, description: row.description,
+        }));
+        res.status(200).json({ result: transactionList });
+    });
 });
 
-//DELETE ALL TRANSACTIONS
-app.delete('/transaction',(req,res)=>{
-    try{
-        transactionService.deleteAllTransactions(function(result){
-            res.statusCode = 200;
-            res.json({message:"delete function execution finished."})
-        })
-    }catch (err){
-        res.json({message: "Deleting all transactions may have failed.", error:err.message});
-    }
+// DELETE ALL TRANSACTIONS
+app.delete('/transaction', (req, res) => {
+    transactionService.deleteAllTransactions((err) => {
+        if (err) return res.status(500).json({ message: 'deleting all transactions failed', error: err.message });
+        res.status(200).json({ message: 'delete function execution finished.' });
+    });
 });
 
-//DELETE ONE TRANSACTION
-app.delete('/transaction/id', (req,res)=>{
-    try{
-        //probably need to do some kind of parameter checking
-        transactionService.deleteTransactionById(req.body.id, function(result){
-            res.statusCode = 200;
-            res.json({message: `transaction with id ${req.body.id} seemingly deleted`});
-        })
-    } catch (err){
-        res.json({message:"error deleting transaction", error: err.message});
-    }
+// DELETE ONE TRANSACTION
+app.delete('/transaction/id', (req, res) => {
+    transactionService.deleteTransactionById(req.body.id, (err) => {
+        if (err) return res.status(500).json({ message: 'error deleting transaction', error: err.message });
+        res.status(200).json({ message: `transaction with id ${req.body.id} deleted` });
+    });
 });
 
-//GET SINGLE TRANSACTION
-app.get('/transaction/id',(req,res)=>{
-    //also probably do some kind of parameter checking here
-    try{
-        transactionService.findTransactionById(req.body.id,function(result){
-            res.statusCode = 200;
-            var id = result[0].id;
-            var amt = result[0].amount;
-            var desc= result[0].desc;
-            res.json({"id":id,"amount":amt,"desc":desc});
-        });
-
-    }catch(err){
-        res.json({message:"error retrieving transaction", error: err.message});
-    }
+// GET SINGLE TRANSACTION
+app.get('/transaction/id', (req, res) => {
+    transactionService.findTransactionById(req.body.id, (err, result) => {
+        if (err) return res.status(500).json({ message: 'error retrieving transaction', error: err.message });
+        if (!result || result.length === 0) return res.status(404).json({ message: 'transaction not found' });
+        const { id, amount, description } = result[0];
+        res.status(200).json({ id, amount, description });
+    });
 });
 
-  app.listen(port, () => {
-    console.log(`AB3 backend app listening at http://localhost:${port}`)
-  })
+app.listen(port, () => {
+    console.log(`RetailEdge app-tier listening on port ${port}`);
+});
