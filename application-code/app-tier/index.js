@@ -1,7 +1,11 @@
-const transactionService = require('./TransactionService');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+
+const { loadAppSecrets } = require('./config/secrets');
+const { setDbConfig } = require('./DbConfig');
+const { initRedisClient, getRedisClient } = require('./config/redis');
+const transactionService = require('./TransactionService');
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -10,9 +14,28 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(cors());
 
-// Health check - used by ALB target group / CodeDeploy validation
-app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok' });
+// Health check - reports MySQL (critical) and Redis (non-critical) status
+app.get('/health', async (req, res) => {
+    const health = { status: 'ok', mysql: 'connected', redis: 'unknown' };
+
+    try {
+        await transactionService.pingDb();
+    } catch (err) {
+        health.status = 'error';
+        health.mysql = 'unavailable';
+    }
+
+    const redis = getRedisClient();
+    if (!redis) {
+        health.redis = 'not_configured';
+    } else if (redis.status === 'ready') {
+        health.redis = 'connected';
+    } else {
+        health.redis = 'unavailable';
+    }
+
+    const httpStatus = health.status === 'ok' ? 200 : 503;
+    res.status(httpStatus).json(health);
 });
 
 // ADD TRANSACTION
@@ -60,6 +83,29 @@ app.get('/transaction/id', (req, res) => {
     });
 });
 
-app.listen(port, () => {
-    console.log(`RetailEdge app-tier listening on port ${port}`);
-});
+/**
+ * Startup sequence - order matters here:
+ * 1. Fetch secrets from Secrets Manager (async, must finish first)
+ * 2. Initialize Redis client using the Redis secret
+ * 3. Set the DB config and initialize the MySQL pool
+ * 4. Only now start listening for HTTP requests
+ */
+async function startServer() {
+    try {
+        const { dbSecret, redisSecret } = await loadAppSecrets();
+
+        initRedisClient(redisSecret);
+
+        setDbConfig(dbSecret);
+        transactionService.initDbPool();
+
+        app.listen(port, () => {
+            console.log(`RetailEdge app-tier listening on port ${port}`);
+        });
+    } catch (err) {
+        console.error('[STARTUP] Failed to initialize application:', err.message);
+        process.exit(1);
+    }
+}
+
+startServer();
