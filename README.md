@@ -46,7 +46,7 @@ This repository is a fork of the original AWS Three-Tier Web Architecture Worksh
 The current application-level changes are implemented in the following feature branch:
 
 ```text
-feat/redis-cache-and-runtime-secrets
+feat/retailedge-aws-integration
 ```
 
 ## Application Tier Changes
