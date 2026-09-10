@@ -1,0 +1,133 @@
+name: Deploy RetailEdge
+
+on:
+  push:
+    branches:
+      - main
+      - feat/retailedge-aws-integration
+
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'application-code/app-tier/**'
+
+            frontend:
+              - 'application-code/web-tier/**'
+
+  deploy-backend:
+    name: Deploy Backend
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        working-directory: application-code/app-tier
+        run: |
+          docker build \
+            -t ${{ vars.ECR_REPOSITORY_URL }}:${GITHUB_SHA} .
+
+      - name: Push Docker image
+        run: |
+          docker push \
+            ${{ vars.ECR_REPOSITORY_URL }}:${GITHUB_SHA}
+
+      - name: Deploy to EC2
+        run: |
+          aws lambda invoke \
+            --function-name "${{ vars.DEPLOY_LAMBDA_FUNCTION_NAME }}" \
+            --payload '{"image_tag":"'"${GITHUB_SHA}"'"}' \
+            --cli-binary-format raw-in-base64-out \
+            response.json
+
+          cat response.json
+
+          if grep -q '"success":true' response.json; then
+            echo "Deployment succeeded."
+          else
+            echo "Deployment failed."
+            exit 1
+          fi
+
+  deploy-frontend:
+    name: Deploy Frontend
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: application-code/web-tier/package-lock.json
+
+      - name: Install dependencies
+        working-directory: application-code/web-tier
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: application-code/web-tier
+        run: npm run build
+
+      - name: Upload frontend to S3
+        working-directory: application-code/web-tier
+        run: |
+          aws s3 sync build/ \
+            s3://${{ vars.WEB_BUCKET_NAME }} \
+            --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"
