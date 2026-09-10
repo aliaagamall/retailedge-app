@@ -62,22 +62,31 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Set image tag
+        id: image
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "tag=${GITHUB_SHA}-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Docker image
         working-directory: application-code/app-tier
         run: |
           docker build \
-            -t ${{ vars.ECR_REPOSITORY_URL }}:${GITHUB_SHA} .
+            -t ${{ vars.ECR_REPOSITORY_URL }}:${{ steps.image.outputs.tag }} .
 
       - name: Push Docker image
         run: |
           docker push \
-            ${{ vars.ECR_REPOSITORY_URL }}:${GITHUB_SHA}
+            ${{ vars.ECR_REPOSITORY_URL }}:${{ steps.image.outputs.tag }}
 
       - name: Deploy to EC2
         run: |
           aws lambda invoke \
             --function-name "${{ vars.DEPLOY_LAMBDA_FUNCTION_NAME }}" \
-            --payload '{"image_tag":"'"${GITHUB_SHA}"'"}' \
+            --payload '{"image_tag":"${{ steps.image.outputs.tag }}"}' \
             --cli-binary-format raw-in-base64-out \
             response.json
 
