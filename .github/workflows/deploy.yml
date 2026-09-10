@@ -81,7 +81,7 @@ jobs:
 
           cat response.json
 
-          if grep -q '"success":true' response.json; then
+          if jq -e '.success == true' response.json >/dev/null; then
             echo "Deployment succeeded."
           else
             echo "Deployment failed."
