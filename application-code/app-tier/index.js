@@ -99,7 +99,7 @@ async function startServer() {
         setDbConfig(dbSecret);
         transactionService.initDbPool();
 
-        app.listen(port, () => {
+        app.listen(port, '0.0.0.0', () => {
             console.log(`RetailEdge app-tier listening on port ${port}`);
         });
     } catch (err) {
