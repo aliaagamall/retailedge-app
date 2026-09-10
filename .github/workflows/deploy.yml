@@ -1,6 +1,8 @@
 name: Deploy RetailEdge
 
 on:
+  workflow_dispatch:
+
   push:
     branches:
       - main
@@ -44,7 +46,7 @@ jobs:
   deploy-backend:
     name: Deploy Backend
     needs: detect-changes
-    if: needs.detect-changes.outputs.backend == 'true' && github.event_name == 'push'
+    if: needs.detect-changes.outputs.backend == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
 
     steps:
@@ -91,7 +93,7 @@ jobs:
   deploy-frontend:
     name: Deploy Frontend
     needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true' && github.event_name == 'push'
+    if: needs.detect-changes.outputs.frontend == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
 
     steps:
