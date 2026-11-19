@@ -1,8 +1,11 @@
 # AWS Three-Tier Web Architecture Workshop
 
+[![Deploy RetailEdge](https://github.com/aliaagamall/retailedge-app/actions/workflows/deploy.yml/badge.svg?branch=feat%2Fretailedge-aws-integration)](https://github.com/aliaagamall/retailedge-app/actions/workflows/deploy.yml)
+
 ## Description
 
 This workshop is a hands-on walkthrough of a three-tier web architecture in AWS. It covers manual creation and configuration of the networking, security, application, and database components required to operate the architecture in a highly available and scalable manner.
+
 ## Related Repositories
 
 The AWS infrastructure for the RetailEdge application is maintained in a separate repository:
