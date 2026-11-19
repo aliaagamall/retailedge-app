@@ -7,10 +7,20 @@ on:
     branches:
       - main
       - feat/retailedge-aws-integration
+    paths-ignore:
+      - 'README.md'
+      - '**/README.md'
+      - 'docs/**'
+      - '.github/workflows/**'
 
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - 'README.md'
+      - '**/README.md'
+      - 'docs/**'
+      - '.github/workflows/**'
 
 permissions:
   id-token: write
